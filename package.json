@@ -1,7 +1,7 @@
 {
-  "name": "node-js-getting-started",
-  "version": "0.3.0",
-  "description": "A sample Node.js app using Express 4",
+  "name": "gw2verify",
+  "version": "0.0.1",
+  "description": "Discord bot that auto-verifies members based on guild membership.",
   "engines": {
     "node": "8.11.1"
   },
@@ -16,12 +16,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/heroku/node-js-getting-started"
+    "url": "https://github.com/irphilli/gw2verify"
   },
   "keywords": [
     "node",
     "heroku",
-    "express"
+    "guildwars2",
+    "discord"
   ],
   "license": "MIT"
 }
