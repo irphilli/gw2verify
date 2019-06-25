@@ -1,7 +1,0 @@
-{
-  "name": "Guild Wars 2 Verify Bot",
-  "description": "Discord bot that auto-verifies members based on guild membership",
-  "repository": "https://github.com/irphilli/gw2verify",
-  "keywords": ["node", "heroku", "guildwars2", "discord"],
-  "image": "heroku/nodejs"
-}
