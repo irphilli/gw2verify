@@ -21,18 +21,13 @@ def load_world_info
     @worlds = {}
     api_response = JSON.parse(response.body)
     api_response.each do |world|
-      @worlds[world["id"]] = world["name"]
+      @worlds[world["id"]] = world["name"].gsub(/ \[.*$/, "")
     end
     
     @redis.set("worlds", @worlds.to_json)
   else
     @worlds = JSON.parse(worlds)
   end
-end
-
-def server_initialized?(server_id)
-  server_info = @redis.get("server_#{server_id}")
-  return !server_info.nil?
 end
 
 def add_account(server_id, account_id, key)
@@ -51,21 +46,49 @@ def add_account(server_id, account_id, key)
   # Set role for server
 end
 
-def reset_roles(server_id, account_id)
-  # If guild is set, reset guild role
-  
-  # Reset server roles
+# Maps role name to role id
+def get_server_roles(server_id)
+  roles = JSON.parse(Discordrb::API::Server.roles(@bot.token, server_id))
+  result = {}
+  roles.each do |role|
+    result[role["name"]] = role["id"]
+  end
+  return result
+end
+
+def reset_roles(server_roles, server_id, account_id, guild)
+  begin
+    member_info = JSON.parse(Discordrb::API::Server.resolve_member(@bot.token, server_id, account_id))
+    roles = member_info["roles"]
+    # If guild is set, remove guild role
+    unless guild.nil?
+      role_id = server_roles[guild]
+      roles = roles - [role_id] unless role_id.nil?
+    end
+
+    # Remove server roles
+    @worlds.each_value do |world|
+      role_id = server_roles[world]
+      roles = roles - [role_id] unless role_id.nil?
+    end
+    
+    # Update user
+    Discordrb::API::Server.update_member(@bot.token, server_id, account_id, roles: roles)
+  rescue => e
+    # TODO print error to admin channel
+    throw e
+  end
 end
 
 def initial_server_info(name)
   return {
     "name" => name,
-    "guild" => nil,
-    "worlds" => []
+    "guild" => nil
   };
 end
 
 @bot.ready do |event|
+  puts "Invite URL: #{@bot.invite_url}"
   puts "Logged in as #{@bot.profile.username} (ID:#{@bot.profile.id}) | #{@bot.servers.size} servers"
 end
 
@@ -120,20 +143,7 @@ end
   event.respond "Server guild set to: [#{server_info["guild"]["tag"]}] #{server_info["guild"]["name"]}"
 end
 
-@bot.command :worlds do |event, *args|
-  return if event.channel.nil? || event.channel.name != ADMIN_CHANNEL
-  
-  if args.length == 0
-    return
-  end
-  
-  if args[0] == "add"
-  elsif args[0] == "remove"
-  end
-  
-end
-
-@bot.command :refresh do |event, *args|
+@bot.command :audit do |event, *args|
   return if event.channel.nil? || event.channel.name != ADMIN_CHANNEL
   
   # For all users on discord server...
@@ -146,12 +156,6 @@ end
 @bot.command :verify do |event, *args|
   return if event.channel.nil? || event.channel.name != VERIFICATION_CHANNEL
   
-  unless server_initialized?(event.channel.server.id)
-    # TODO remove user's post
-    event.respond "Admin has not configured verify bot"
-    return
-  end
-  
   if args.length != 1
     # TODO remove user's post
     event.respond "Invalid command"
@@ -159,12 +163,18 @@ end
   end
   
   begin
-    add_account(event.author.id, args[0])
+    add_account(event.channel.server.id, event.author.id, args[0])
     # TODO remove user's post
     event.respond "API key added successfully."
   rescue => e
     event.respond e.message
   end
+end
+
+@bot.command :debug do |event, *args|
+  roles = get_server_roles(event.channel.server.id)
+  reset_roles(roles, event.channel.server.id, event.author.id, "Chewbacca")
+  event.respond "pong"
 end
 
 load_world_info
