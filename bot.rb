@@ -30,22 +30,6 @@ def load_world_info
   end
 end
 
-def add_account(server_id, account_id, key)
-  # Check if key is valid
-  response = Faraday.get "#{API_ENDPOINT}/v2/account?access_token=#{key}"
-  raise "Couldn't retrieve account information. Check API key or try again later." if response.status != 200
-  
-  @redis.set("account_#{account_id}", key)
-  
-  # Set roles for current Discord server
-  
-  # Reset managed roles
-  
-  # If guild is set, set appropiate guild
-  
-  # Set role for server
-end
-
 # Maps role name to role id
 def get_server_roles(server_id)
   roles = JSON.parse(Discordrb::API::Server.roles(@bot.token, server_id))
@@ -56,28 +40,54 @@ def get_server_roles(server_id)
   return result
 end
 
-def reset_roles(server_roles, server_id, account_id, guild)
-  begin
-    member_info = JSON.parse(Discordrb::API::Server.resolve_member(@bot.token, server_id, account_id))
-    roles = member_info["roles"]
-    # If guild is set, remove guild role
-    unless guild.nil?
-      role_id = server_roles[guild]
-      roles = roles - [role_id] unless role_id.nil?
-    end
-
-    # Remove server roles
-    @worlds.each_value do |world|
-      role_id = server_roles[world]
-      roles = roles - [role_id] unless role_id.nil?
-    end
-    
-    # Update user
-    Discordrb::API::Server.update_member(@bot.token, server_id, account_id, roles: roles)
-  rescue => e
-    # TODO print error to admin channel
-    throw e
+def reset_roles(server_roles, member_roles, guild_info)
+  roles = member_roles.dup
+  # If guild is set, remove guild role
+  unless guild_info.nil?
+    role_id = server_roles[guild_info["name"]]
+    roles = roles - [role_id] unless role_id.nil?
   end
+
+  # Remove server roles
+  @worlds.each_value do |world|
+    role_id = server_roles[world]
+    roles = roles - [role_id] unless role_id.nil?
+  end
+  return roles
+end
+
+def add_account(server_id, account_id, key)
+  # Check if key is valid
+  response = Faraday.get "#{API_ENDPOINT}/v2/account?access_token=#{key}"
+  raise "Couldn't retrieve account information. Check API key or try again later." if response.status != 200
+  @redis.set("account_#{account_id}", key)
+  
+  account_info = JSON.parse(response.body)
+  member_info = JSON.parse(Discordrb::API::Server.resolve_member(@bot.token, server_id, account_id))
+  server_roles = get_server_roles(server_id)
+  server_info = @redis.get("server_#{server_id}")
+  server_info = JSON.parse(server_info) unless server_info.nil?
+  guild_info = server_info["guild"]
+  roles = reset_roles(server_roles, member_info["roles"], guild_info)
+  
+  # If guild is set, set appropiate guild
+  unless guild_info.nil?
+    role_id = server_roles[guild_info["name"]]
+    unless role_id.nil?
+      if account_info["guilds"].include?(guild_info["id"])
+        roles = roles + [role_id]
+      end
+    end
+  end
+  # Set role for server
+  world = @worlds[account_info["world"].to_s]
+  unless world.nil?
+    role_id = server_roles[world]
+    roles = roles + [role_id] unless role_id.nil?
+  end
+  
+  # Update user
+  Discordrb::API::Server.update_member(@bot.token, server_id, account_id, roles: roles)
 end
 
 def initial_server_info(name)
@@ -156,15 +166,15 @@ end
 @bot.command :verify do |event, *args|
   return if event.channel.nil? || event.channel.name != VERIFICATION_CHANNEL
   
+  # TODO remove user's post
+  
   if args.length != 1
-    # TODO remove user's post
     event.respond "Invalid command"
     return
   end
   
   begin
     add_account(event.channel.server.id, event.author.id, args[0])
-    # TODO remove user's post
     event.respond "API key added successfully."
   rescue => e
     event.respond e.message
@@ -172,9 +182,6 @@ end
 end
 
 @bot.command :debug do |event, *args|
-  roles = get_server_roles(event.channel.server.id)
-  reset_roles(roles, event.channel.server.id, event.author.id, "Chewbacca")
-  event.respond "pong"
 end
 
 load_world_info
