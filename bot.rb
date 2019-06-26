@@ -10,6 +10,7 @@ VERIFICATION_CHANNEL = 'verification'
 @bot = Discordrb::Commands::CommandBot.new token: ENV['DISCORD_TOKEN'], prefix: '!'
 @redis = Redis.new
 
+# Loads world info into global variable
 def load_world_info  
   # First, let's check if info is saved in Redis
   worlds = @redis.get("worlds")
@@ -40,6 +41,7 @@ def get_server_roles(server_id)
   return result
 end
 
+# Removes managed roles from a list of member roles
 def reset_roles(server_roles, member_roles, guild_info)
   roles = member_roles.dup
   # If guild is set, remove guild role
@@ -56,6 +58,8 @@ def reset_roles(server_roles, member_roles, guild_info)
   return roles
 end
 
+# Add a new account to the Discord server
+# Checks Guild Wars 2 API and assigns appropiate roles
 def add_account(server_id, account_id, key)
   # Check if key is valid
   response = Faraday.get "#{API_ENDPOINT}/v2/account?access_token=#{key}"
@@ -97,7 +101,7 @@ def initial_server_info(name)
   };
 end
 
-@bot.ready do |event|
+@bot.ready do
   puts "Invite URL: #{@bot.invite_url}"
   puts "Logged in as #{@bot.profile.username} (ID:#{@bot.profile.id}) | #{@bot.servers.size} servers"
 end
@@ -264,10 +268,5 @@ end
   end
 end
 
-@bot.command :debug do |event, *args|
-  pp event
-end
-
 load_world_info
-
 @bot.run
