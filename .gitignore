@@ -1,4 +1,5 @@
 .token
+dump.rdb
 
 # Local development
 *.env
