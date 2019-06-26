@@ -153,36 +153,114 @@ end
   event.respond "Server guild set to: [#{server_info["guild"]["tag"]}] #{server_info["guild"]["name"]}"
 end
 
+def display_members(event, heading, all_members, members)
+  display_list = []
+  members.each do |member_id|
+    member = all_members[member_id]
+    display_name = member["nick"].nil? ?
+      "#{member["user"]["username"]}##{member["user"]["discriminator"]}" :
+      "#{member["nick"]} (#{member["user"]["username"]}##{member["user"]["discriminator"]})}"
+    display_list.push(display_name)
+  end
+  display_list = display_list.sort_by(&:downcase)
+  
+  if display_list.length > 0
+    event << "**#{heading}**"
+    event << '```'
+    display_list.each do |item|
+      event << item
+    end
+    event << '```'
+  end
+end
+
 @bot.command :audit do |event, *args|
   return if event.channel.nil? || event.channel.name != ADMIN_CHANNEL
   
-  # For all users on discord server...
+  server_info = @redis.get("server_#{event.server.id}")
+  server_info = JSON.parse(server_info) unless server_info.nil?
   
-  # Remove managed roles
-  # Add guild role if part of guild
-  # Add applicable server role
+  # Map of member id to member info
+  all_members = {}
+  # Server groups
+  member_groups = {
+    "guild" => [],
+    "worlds" => {},
+    "unregistered" => [],
+    "api_error" => []
+  }
+  
+  last_member_id = nil
+  loop do
+    # For all users on discord server...
+    members = JSON.parse(Discordrb::API::Server.resolve_members(@bot.token, event.server.id, 1000, last_member_id))
+    members.each do |member|
+      member_id = member["user"]["id"]
+      # See which group(s) member belongs to on server
+      key = @redis.get("account_#{member_id}")
+      if key.nil?
+        member_groups["unregistered"].push(member_id)
+      else
+        response = Faraday.get "#{API_ENDPOINT}/v2/account?access_token=#{key}"
+        if response.status == 200
+          account_info = JSON.parse(response.body)
+          
+          # Guild membership
+          unless server_info.nil? && server_info["guild"].nil?
+            if account_info["guilds"].include?(server_info["guild"]["id"])
+              member_groups["guild"].push(member_id)
+            end
+          end
+          
+          # World membership
+          world = @worlds[account_info["world"].to_s]
+          unless world.nil?
+            if member_groups["worlds"][world].nil?
+              member_groups["worlds"][world] = [member_id]
+            else
+              member_groups["worlds"][world].push(member_id)
+            end
+          end
+        else
+          member_groups["api_error"].push(member_id)
+        end
+      end
+      
+      all_members[member_id] = member
+      last_member_id = member_id
+    end
+    break if members.length == 0
+  end
+    
+  display_members(event, 'Guild', all_members, member_groups["guild"])
+  member_groups["worlds"].each do |world, world_members|
+    display_members(event, world, all_members, world_members)
+  end
+  display_members(event, 'Un-Registered', all_members, member_groups["unregistered"])
+  display_members(event, 'API Error', all_members, member_groups["api_error"])
+
+  # TODO: option to update roles accordingly
 end
 
 @bot.command :verify do |event, *args|
   return if event.channel.nil? || event.channel.name != VERIFICATION_CHANNEL
   
   if args.length != 1
-    event.respond "Invalid command"
-    return
+    return "Invalid command"
   end
   
   begin
     # Attempt to delete message
-    Discordrb::API::Channel.delete_message(@bot.token, event.message.channel.id, event.message.id)
+    Discordrb::API::Channel.delete_message(@bot.token, event.channel.id, event.message.id)
   rescue
     # Nothing
   end
   
   begin
-    add_account(event.channel.server.id, event.author.id, args[0])
-    event.respond "Welcome <@#{event.author.id}>!"
+    add_account(event.server.id, event.author.id, args[0])
+    return "Welcome <@#{event.author.id}>!"
   rescue => e
-    event.respond "<@#{event.author.id}> #{e.message}"
+    return "<@#{event.author.id}> #{e.message}"
   end
 end
 
