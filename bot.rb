@@ -166,22 +166,28 @@ end
 @bot.command :verify do |event, *args|
   return if event.channel.nil? || event.channel.name != VERIFICATION_CHANNEL
   
-  # TODO remove user's post
-  
   if args.length != 1
     event.respond "Invalid command"
     return
   end
   
   begin
+    # Attempt to delete message
+    Discordrb::API::Channel.delete_message(@bot.token, event.message.channel.id, event.message.id)
+  rescue
+    # Nothing
+  end
+  
+  begin
     add_account(event.channel.server.id, event.author.id, args[0])
-    event.respond "API key added successfully."
+    event.respond "Welcome <@#{event.author.id}>!"
   rescue => e
-    event.respond e.message
+    event.respond "<@#{event.author.id}> #{e.message}"
   end
 end
 
 @bot.command :debug do |event, *args|
+  pp event
 end
 
 load_world_info
