@@ -71,7 +71,7 @@ def add_account(server_id, account_id, key)
   server_roles = get_server_roles(server_id)
   server_info = @redis.get("server_#{server_id}")
   server_info = JSON.parse(server_info) unless server_info.nil?
-  guild_info = server_info["guild"]
+  guild_info = server_info["guild"] unless server_info.nil?
   roles = reset_roles(server_roles, member_info["roles"], guild_info)
   
   # If guild is set, set appropiate guild
@@ -111,18 +111,11 @@ end
   
   if args.length == 0
     server_info = @redis.get("server_#{event.channel.server.id}")
-    if server_info.nil?
-      event.respond "No Guild Set"
-    else
-      server_info = JSON.parse(server_info)
-      if server_info["guild"].nil?
-        event.respond "No Guild Set"
-      else
-        event.respond "Server guild: [#{server_info["guild"]["tag"]}] #{server_info["guild"]["name"]}"
-      end
-    end
+    return "No Guild Set" if server_info.nil?
+
+    server_info = JSON.parse(server_info)
     
-    return
+    return server_info["guild"].nil? ? "No Guild Set" : "Server guild: [#{server_info["guild"]["tag"]}] #{server_info["guild"]["name"]}"
   end
   
   # Get guild information from API
@@ -132,16 +125,10 @@ end
     return
   end
   guild_ids = JSON.parse(response.body)
-  if guild_ids.length == 0
-    event.respond "Guild not found"
-    return
-  end
+  return "Guild not found" if guild_ids.length == 0
   
   response = Faraday.get "#{API_ENDPOINT}/v2/guild/#{guild_ids.first}"
-  if response.status != 200
-    event.respond "API Error. Please try again later."
-    return
-  end
+  return "API Error. Please try again later." if response.status != 200
   
   guild_info = JSON.parse(response.body)
   
@@ -154,7 +141,8 @@ end
     "name" => guild_info["name"]
   }
   @redis.set("server_#{event.channel.server.id}", server_info.to_json)
-  event.respond "Server guild set to: [#{server_info["guild"]["tag"]}] #{server_info["guild"]["name"]}"
+  
+  "Server guild set to: [#{server_info["guild"]["tag"]}] #{server_info["guild"]["name"]}"
 end
 
 def display_members(event, heading, all_members, members)
@@ -210,7 +198,7 @@ end
           account_info = JSON.parse(response.body)
           
           # Guild membership
-          unless server_info.nil? && server_info["guild"].nil?
+          unless server_info.nil? || server_info["guild"].nil?
             if account_info["guilds"].include?(server_info["guild"]["id"])
               member_groups["guild"].push(member_id)
             end
@@ -262,10 +250,11 @@ end
   
   begin
     add_account(event.server.id, event.author.id, args[0])
-    return "Welcome <@#{event.author.id}>!"
   rescue => e
-    return "<@#{event.author.id}> #{e.message}"
+    "<@#{event.author.id}> #{e.message}"
   end
+  
+  "Welcome <@#{event.author.id}>!"
 end
 
 load_world_info
