@@ -7,6 +7,12 @@ API_ENDPOINT = 'https://api.guildwars2.com'
 ADMIN_CHANNEL = 'gw2verify-admin'
 VERIFICATION_CHANNEL = 'verification'
 
+# For now, use feature flag.
+# TODO make configurable
+MAIN_WORLD = "Blackgate"
+# If nil, role is user's world
+OFF_WORLD_ROLE = "Off Server Friends"
+
 @bot = Discordrb::Commands::CommandBot.new token: ENV['DISCORD_TOKEN'], prefix: '!'
 @redis = Redis.new
 
@@ -55,6 +61,11 @@ def reset_roles(server_roles, member_roles, guild_info)
     role_id = server_roles[world]
     roles = roles - [role_id] unless role_id.nil?
   end
+  unless OFF_WORLD_ROLE.nil?
+    role_id = server_roles[OFF_WORLD_ROLE]
+    roles = roles - [role_id] unless role_id.nil?
+  end
+  
   return roles
 end
 
@@ -85,6 +96,7 @@ def add_account(server_id, account_id, key)
   end
   # Set role for server
   world = @worlds[account_info["world"].to_s]
+  world = (world == MAIN_WORLD) ? world : OFF_WORLD_ROLE unless MAIN_WORLD.nil? || OFF_WORLD_ROLE.nil?
   unless world.nil?
     role_id = server_roles[world]
     roles = roles + [role_id] unless role_id.nil?
@@ -206,6 +218,7 @@ end
           
           # World membership
           world = @worlds[account_info["world"].to_s]
+          world = (world == MAIN_WORLD) ? world : OFF_WORLD_ROLE unless MAIN_WORLD.nil? || OFF_WORLD_ROLE.nil?
           unless world.nil?
             if member_groups["worlds"][world].nil?
               member_groups["worlds"][world] = [member_id]
